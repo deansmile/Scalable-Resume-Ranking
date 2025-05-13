@@ -1,0 +1,78 @@
+import boto3
+import json
+import requests
+from requests_aws4auth import AWS4Auth
+
+# === AWS + OpenSearch Settings ===
+region = 'us-east-1'
+service = 'es'
+credentials = boto3.Session().get_credentials()
+awsauth = AWS4Auth(
+    credentials.access_key,
+    credentials.secret_key,
+    region,
+    service,
+    session_token=credentials.token
+)
+
+OPENSEARCH_URL = 'https://search-resume-index-r4zblkgry3y2daw6tvqcrb2ysq.us-east-1.es.amazonaws.com'
+INDEX_NAME = 'resumes'
+
+# === Lambda Entry Point ===
+def lambda_handler(event, context):
+    try:
+        query_params = event.get('queryStringParameters', {}) or {}
+        search_query = query_params.get('query', '')
+
+        url = f"{OPENSEARCH_URL}/{INDEX_NAME}/_search"
+        headers = {"Content-Type": "application/json"}
+
+        if search_query:
+            # ✅ Multiple tags supported: split by comma
+            terms = [term.strip() for term in search_query.split(",") if term.strip()]
+            query = {
+                "query": {
+                    "bool": {
+                        "should": [
+                            {
+                                "multi_match": {
+                                    "query": term,
+                                    "fields": ["raw_text", "parsed_sections.*", "name", "email", "phone"]
+                                }
+                            } for term in terms
+                        ],
+                        "minimum_should_match": 1
+                    }
+                },
+                "sort": [
+                    {"score": {"order": "desc"}}
+                ]
+            }
+        else:
+            # ✅ No query → return all resumes sorted by score
+            query = {
+                "query": {"match_all": {}},
+                "sort": [{"score": {"order": "desc"}}]
+            }
+
+        response = requests.get(url, auth=awsauth, headers=headers, json=query)
+        data = response.json()
+
+        results = [hit['_source'] for hit in data['hits']['hits']]
+
+        return {
+            'statusCode': 200,
+            'body': json.dumps({
+                'query': search_query,
+                'results': results
+            }),
+            'headers': {
+                'Access-Control-Allow-Origin': '*'
+            }
+        }
+
+    except Exception as e:
+        return {
+            'statusCode': 500,
+            'body': json.dumps({'error': str(e)})
+        }
