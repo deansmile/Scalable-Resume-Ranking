@@ -1,0 +1,74 @@
+import boto3
+import json
+import os
+import uuid
+
+s3 = boto3.client('s3')
+dynamodb = boto3.resource('dynamodb', region_name='us-east-1')
+
+BUCKET_NAME = 'resume-upload-storage'  # ✅ your actual bucket
+DDB_TABLE = 'Resumes'  # ✅ your actual DynamoDB table
+
+def lambda_handler(event, context):
+    try:
+        # ✅ For POST with query params (your final version)
+        query_params = event.get('queryStringParameters', {}) or {}
+        original_filename = query_params.get('filename', '').strip()
+
+        if not original_filename:
+            return {
+                'statusCode': 400,
+                'body': json.dumps({'error': 'Missing filename query parameter'})
+            }
+
+        # ✅ Clean filename safely
+        original_filename = os.path.basename(original_filename).replace(" ", "_")
+        s3_key = original_filename
+
+        # ✅ Check if file already exists in DynamoDB (by filename)
+        table = dynamodb.Table(DDB_TABLE)
+        response = table.scan(
+            FilterExpression=boto3.dynamodb.conditions.Attr('original_filename').eq(original_filename)
+        )
+
+        if response['Items']:
+            candidate_id = response['Items'][0]['candidate_id']  # ✅ Existing candidate
+        else:
+            candidate_id = str(uuid.uuid4())
+            # ✅ Add new record (minimal; full parse will happen later in lambda_parse_resume)
+            table.put_item(Item={
+                'candidate_id': candidate_id,
+                's3_key': s3_key,
+                'original_filename': original_filename
+            })
+
+        # ✅ Generate presigned URL to allow frontend to upload file
+        presigned_url = s3.generate_presigned_url(
+            'put_object',
+            Params={
+                'Bucket': BUCKET_NAME,
+                'Key': s3_key,
+                'ContentType': 'application/pdf'
+            },
+            ExpiresIn=3600
+        )
+
+        return {
+            'statusCode': 200,
+            'body': json.dumps({
+                'candidate_id': candidate_id,
+                's3_key': s3_key,
+                'upload_url': presigned_url,
+                'original_filename': original_filename
+            }),
+            'headers': {
+                'Access-Control-Allow-Origin': '*'
+            }
+        }
+
+    except Exception as e:
+        print(f"ERROR: {str(e)}")
+        return {
+            'statusCode': 500,
+            'body': json.dumps({'error': str(e)})
+        }
