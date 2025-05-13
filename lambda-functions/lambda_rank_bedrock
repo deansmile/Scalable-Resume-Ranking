@@ -1,0 +1,164 @@
+import boto3
+import json
+import re
+from datetime import datetime
+from decimal import Decimal
+import requests
+from requests_aws4auth import AWS4Auth
+
+# === AWS Clients ===
+bedrock = boto3.client('bedrock-runtime')
+dynamodb = boto3.resource('dynamodb')
+
+# === DynamoDB Tables ===
+job_table = dynamodb.Table('JobDescriptions')
+resume_table = dynamodb.Table('Resumes')
+ranking_table = dynamodb.Table('ResumeRankings')
+
+# === OpenSearch Setup ===
+region = 'us-east-1'
+service = 'es'
+credentials = boto3.Session().get_credentials()
+awsauth = AWS4Auth(
+    credentials.access_key,
+    credentials.secret_key,
+    region,
+    service,
+    session_token=credentials.token
+)
+OPENSEARCH_URL = 'https://search-resume-index-r4zblkgry3y2daw6tvqcrb2ysq.us-east-1.es.amazonaws.com'
+INDEX_NAME = 'resumes'
+
+def print_dict_keys(d, prefix=""):
+    if isinstance(d, dict):
+        for key, value in d.items():
+            full_key = f"{prefix}.{key}" if prefix else key
+            print(full_key)
+            print_dict_keys(value, full_key)
+    elif isinstance(d, list):
+        for idx, item in enumerate(d):
+            print_dict_keys(item, f"{prefix}[{idx}]")
+
+# === Lambda Entry Point ===
+def lambda_handler(event, context):
+    try:
+        job_id = event['job_id']
+        candidate_ids = event.get('candidate_ids', None)
+
+        # === 1. Get job description ===
+        job_description = job_table.get_item(Key={'job_id': job_id})['Item']['description']
+
+        # === 2. Get candidates ===
+        if candidate_ids:
+            candidates = candidate_ids
+        else:
+            scan_result = resume_table.scan(ProjectionExpression='candidate_id')
+            candidates = [item['candidate_id'] for item in scan_result['Items']]
+
+        # === 3. Score each resume ===
+        rankings = []
+        for candidate_id in candidates:
+            resume_item = resume_table.get_item(Key={'candidate_id': candidate_id})['Item']
+            resume_text = resume_item.get('raw_text', '')
+
+            prompt = (
+                f"\n\nHuman: Please rate how well this resume matches the job description on a scale from 0 to 100.\n"
+                f"Resume:\n{resume_text}\n\n"
+                f"Job Description:\n{job_description}\n\n"
+                f"Only return the score as a number.\n\n"
+                f"Assistant:"
+            )
+
+            response = bedrock.invoke_model(
+                modelId='amazon.titan-text-premier-v1:0',
+                body=json.dumps({
+                    "inputText": prompt,
+                    "textGenerationConfig": {
+                        "temperature": 0.3,
+                        "maxTokenCount": 500,
+                        "topP": 0.9,
+                        "stopSequences": []
+                    }
+                }),
+                contentType='application/json',
+                accept='application/json'
+            )
+
+            bedrock_response = json.loads(response['body'].read())
+            completion = bedrock_response['results'][0]['outputText']
+            score = extract_score(completion)
+
+            print(f"[DEBUG] Candidate: {candidate_id} — Score: {score}")
+            rankings.append({'candidate_id': candidate_id, 'score': score})
+
+            # ✅ update score + job_id + timestamp into Resumes table
+            now_iso = datetime.utcnow().isoformat()
+            resume_table.update_item(
+                Key={'candidate_id': candidate_id},
+                UpdateExpression='SET score = :s, last_ranked_job_id = :j, last_ranked_timestamp = :t',
+                ExpressionAttributeValues={
+                    ':s': Decimal(str(score)),
+                    ':j': job_id,
+                    ':t': now_iso
+                }
+            )
+
+            # ✅ index to OpenSearch
+            doc = {
+                'candidate_id': candidate_id,
+                'name': resume_item.get('name', ''),
+                'email': resume_item.get('email', ''),
+                'phone': resume_item.get('phone', ''),
+                'score': float(score),
+                'job_id': job_id,
+                'last_ranked_job_id': job_id,
+                'last_ranked_timestamp': now_iso,
+                'parsed_sections': resume_item.get('parsed_sections', {}),
+                'raw_text': resume_item.get('raw_text', ''),
+                's3_key': resume_item.get('s3_key', ''),
+                'original_filename': resume_item.get('original_filename', ''),
+                'timestamp': resume_item.get('timestamp', '')
+                
+            }
+
+            url = f"{OPENSEARCH_URL}/{INDEX_NAME}/_doc/{candidate_id}"
+            headers = {"Content-Type": "application/json"}
+            r = requests.put(url, auth=awsauth, headers=headers, json=doc)
+
+            if r.status_code not in [200, 201]:
+                print(f"[ERROR] Failed to index {candidate_id}: {r.text}")
+            else:
+                print(f"[SUCCESS] Indexed {candidate_id}")
+
+        # === 4. Store rankings to ResumeRankings table
+        rankings.sort(key=lambda x: x['score'], reverse=True)
+        store_rankings(job_id, rankings)
+
+        return {
+            'statusCode': 200,
+            'body': json.dumps(rankings)
+        }
+
+    except Exception as e:
+        return {
+            'statusCode': 500,
+            'body': json.dumps({"error": str(e)})
+        }
+
+# === Score Extraction Helper ===
+def extract_score(completion):
+    match = re.search(r'\b(\d{1,3})\b', completion)
+    if match:
+        score = int(match.group(1))
+        return max(0, min(score, 100))
+    return 0
+
+# === Store Results to DynamoDB ===
+def store_rankings(job_id, rankings):
+    ranking_table.put_item(
+        Item={
+            'job_id': job_id,
+            'rankings': rankings,
+            'timestamp': datetime.utcnow().isoformat()
+        }
+    )
