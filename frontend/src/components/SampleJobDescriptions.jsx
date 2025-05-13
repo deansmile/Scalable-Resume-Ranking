@@ -9,7 +9,7 @@ import {
   MenuDivider,
   Icon
 } from '@chakra-ui/react';
-import { FiChevronDown, FiBriefcase, FiCode, FiDatabase } from 'react-icons/fi';
+import { FiChevronDown, FiBriefcase, FiCode, FiDatabase, FiCloud, FiServer } from 'react-icons/fi';
 
 // Sample job descriptions
 const sampleJobDescriptions = {
@@ -20,30 +20,30 @@ Responsibilities:
 - Collaborate with stakeholders to understand needs and document requirements
 - Develop and maintain project documentation and reports
 - Facilitate meetings and workshops to gather information
-- Support system testing and implementation
+- Create data-driven insights to support business decisions
 
 Required Skills:
 - Strong analytical and problem-solving abilities
 - Excellent written and verbal communication skills
 - Experience with requirements gathering and documentation
 - Knowledge of business process modeling
-- Proficiency in Microsoft Office suite, especially Excel`,
+- Proficiency in data analysis tools and visualization`,
 
-  "Software Engineer": `Job Title: Frontend Developer
+  "Software Engineer": `Job Title: Full Stack Developer
   
 Responsibilities:
-- Develop responsive user interfaces using React.js
-- Collaborate with backend developers to integrate APIs
-- Implement UI/UX designs with a focus on usability
+- Develop responsive user interfaces using modern frontend frameworks
+- Build scalable backend services and APIs
+- Collaborate with cross-functional teams to deliver features
 - Write clean, maintainable, and efficient code
-- Participate in code reviews and testing
+- Participate in code reviews and implement best practices
 
 Required Skills:
-- Strong proficiency in JavaScript, HTML5, and CSS3
-- Experience with React.js and related libraries
-- Knowledge of modern frontend build pipelines
-- Familiarity with RESTful APIs and state management
-- Understanding of cross-browser compatibility`,
+- Proficiency in JavaScript/TypeScript, HTML5, and CSS3
+- Experience with React/Angular/Vue and Node.js
+- Knowledge of database systems (SQL, NoSQL)
+- Understanding of API design and integration
+- Version control with Git and CI/CD workflows`,
 
   "Data Scientist": `Job Title: Data Scientist
   
@@ -52,14 +52,46 @@ Responsibilities:
 - Build and deploy machine learning models
 - Develop data visualizations and dashboards
 - Collaborate with stakeholders to understand business needs
-- Present findings and recommendations
+- Present findings and recommendations to technical and non-technical audiences
 
 Required Skills:
-- Proficiency in Python and data science libraries (Pandas, NumPy)
-- Experience with machine learning frameworks
-- Strong statistical analysis skills
-- Knowledge of data visualization tools
-- Excellent problem-solving abilities`
+- Proficiency in Python and data science libraries (Pandas, NumPy, Scikit-learn)
+- Experience with machine learning frameworks (TensorFlow, PyTorch)
+- Strong statistical analysis and data modeling skills
+- Knowledge of data visualization tools (Tableau, PowerBI)
+- Database querying and big data processing`,
+
+  "Cloud Engineer": `Job Title: Cloud Engineer
+  
+Responsibilities:
+- Design and implement scalable cloud infrastructure on AWS/Azure/GCP
+- Automate deployment processes using infrastructure as code
+- Containerize applications and manage orchestration
+- Implement and maintain CI/CD pipelines
+- Optimize cloud costs while ensuring high availability
+
+Required Skills:
+- Experience with cloud platforms (AWS, Azure, or GCP)
+- Knowledge of infrastructure as code (Terraform, CloudFormation)
+- Proficiency with containerization and orchestration (Docker, Kubernetes)
+- Understanding of networking, security, and compliance in cloud environments
+- Scripting and automation skills (Python, Bash)`,
+
+  "DevOps Engineer": `Job Title: DevOps Engineer
+  
+Responsibilities:
+- Build and maintain CI/CD pipelines for application deployment
+- Automate infrastructure provisioning and management
+- Monitor system performance and troubleshoot issues
+- Implement security best practices and compliance requirements
+- Collaborate with development teams to optimize delivery processes
+
+Required Skills:
+- Experience with CI/CD tools (Jenkins, GitLab CI, GitHub Actions)
+- Knowledge of containerization and orchestration (Docker, Kubernetes)
+- Infrastructure as code experience (Terraform, Ansible)
+- Monitoring and logging tools expertise (Prometheus, ELK stack)
+- Strong scripting and automation skills (Python, Bash)`
 };
 
 const SampleJobDescriptions = ({ setJobDescription }) => {
@@ -75,6 +107,10 @@ const SampleJobDescriptions = ({ setJobDescription }) => {
         return FiCode;
       case 'Data Scientist':
         return FiDatabase;
+      case 'Cloud Engineer':
+        return FiCloud;
+      case 'DevOps Engineer':
+        return FiServer;
       default:
         return FiBriefcase;
     }

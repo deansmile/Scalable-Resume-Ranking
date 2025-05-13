@@ -17,11 +17,11 @@ import {
 import { FiUpload, FiFile, FiAlertCircle } from 'react-icons/fi';
 import config from '../config';
 
-const ResumeUpload = ({ files, setFiles }) => {
+const ResumeUpload = ({ files, setFiles, isDisabled = false }) => {
   const fileInputRef = useRef(null);
+  const toast = useToast();
   const borderColor = useColorModeValue('gray.300', 'gray.600');
   const hoverBg = useColorModeValue('gray.100', 'gray.700');
-  const toast = useToast();
 
   const validateFile = (file) => {
     // Check file size
@@ -108,10 +108,10 @@ const ResumeUpload = ({ files, setFiles }) => {
   };
 
   return (
-    <Box p={6} borderWidth="1px" borderRadius="lg" bg="white" shadow="md">
-      <FormControl>
+    <Box p={6} borderWidth="1px" borderRadius="lg" bg="white" shadow="md" position="relative">
+      <FormControl isDisabled={isDisabled}>
         <Flex align="center" mb={2}>
-          <Icon as={FiFile} mr={2} color="blue.500" />
+          <Icon as={FiFile} mr={2} color={isDisabled ? "gray.400" : "blue.500"} />
           <FormLabel fontWeight="bold" mb={0}>
             Resume Upload
           </FormLabel>
@@ -123,30 +123,38 @@ const ResumeUpload = ({ files, setFiles }) => {
         <VStack spacing={4} align="stretch">
           <Box
             border="2px dashed"
-            borderColor={borderColor}
+            borderColor={isDisabled ? "gray.200" : borderColor}
             borderRadius="md"
             p={6}
             textAlign="center"
-            bg="gray.50"
-            _hover={{ bg: hoverBg, cursor: "pointer" }}
-            onClick={() => fileInputRef.current.click()}
-            onDragOver={handleDragOver}
-            onDrop={handleDrop}
+            bg={isDisabled ? "gray.100" : "gray.50"}
+            opacity={isDisabled ? 0.6 : 1}
+            _hover={{ 
+              bg: !isDisabled && hoverBg, 
+              cursor: isDisabled ? "not-allowed" : "pointer" 
+            }}
+            onClick={() => !isDisabled && fileInputRef.current.click()}
+            onDragOver={!isDisabled ? handleDragOver : undefined}
+            onDrop={!isDisabled ? handleDrop : undefined}
             transition="all 0.2s"
-            className="file-upload-area"
           >
             <input
               type="file"
               multiple
               accept=".pdf,.txt"
-              onChange={handleFileChange}
+              onChange={!isDisabled ? handleFileChange : undefined}
               style={{ display: 'none' }}
               ref={fileInputRef}
+              disabled={isDisabled}
             />
             
             <Icon as={FiUpload} w={10} h={10} color="gray.400" mb={2} />
-            <Text fontWeight="medium">Click to upload or drag and drop</Text>
-            <Text fontSize="sm" color="gray.500">PDF or TXT files (up to {config.MAX_FILES})</Text>
+            <Text fontWeight="medium">
+              {isDisabled ? "Upload service unavailable" : "Click to upload or drag and drop"}
+            </Text>
+            <Text fontSize="sm" color="gray.500">
+              {isDisabled ? "Please try again later" : `PDF or TXT files (up to ${config.MAX_FILES})`}
+            </Text>
           </Box>
           
           {files.length > 0 && (
@@ -168,8 +176,9 @@ const ResumeUpload = ({ files, setFiles }) => {
                       size="sm" 
                       onClick={(e) => {
                         e.stopPropagation();
-                        handleRemoveFile(index);
+                        !isDisabled && handleRemoveFile(index);
                       }} 
+                      isDisabled={isDisabled}
                     />
                   </Flex>
                 </ListItem>

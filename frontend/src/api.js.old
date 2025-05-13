@@ -1,0 +1,337 @@
+import axios from 'axios';
+import config from './config';
+
+// Base API URL
+const API_BASE_URL = config.API_BASE_URL;
+
+// Mock data for testing
+const MOCK_DATA = {
+  all: [
+    { name: "John_Smith_Resume.pdf", similarity: 0.85, entities: ["Python", "JavaScript", "React", "AWS"] },
+    { name: "Jane_Doe_Resume.pdf", similarity: 0.78, entities: ["Machine Learning", "Data Analysis", "SQL"] },
+    { name: "Alex_Johnson_Resume.pdf", similarity: 0.63, entities: ["Product Management", "Agile", "Scrum"] },
+    { name: "Sample_Resume.pdf", similarity: 0.45, entities: ["Marketing", "Social Media", "Content"] }
+  ],
+  uploaded: [
+    { name: "Bob_Miller_Resume.pdf", similarity: 0.92, entities: ["Java", "Spring", "Microservices"] },
+    { name: "Alice_Chen_Resume.pdf", similarity: 0.74, entities: ["UX Design", "Figma", "Adobe XD"] }
+  ]
+};
+
+// Step 1: Get presigned URL for resume upload
+export const getPresignedUrl = async (filename) => {
+  try {
+    console.log("Getting presigned URL for file:", filename);
+    const response = await axios.post(`${API_BASE_URL}/upload-resume?filename=${encodeURIComponent(filename)}`);
+    console.log("Presigned URL response:", response.data);
+    return response.data;
+  } catch (error) {
+    console.error('Error getting presigned URL:', error);
+    console.error('Error details:', error.response?.data || error.message);
+    throw error;
+  }
+};
+
+// Step 2: Upload file to S3 using presigned URL
+export const uploadFileToS3 = async (uploadUrl, file) => {
+  try {
+    console.log("Uploading file to S3 with URL:", uploadUrl);
+    
+    // Make a clean PUT request with minimal headers
+    // This is a direct upload to S3, not going through API Gateway
+    const response = await axios.put(uploadUrl, file, {
+      headers: {
+        'Content-Type': file.type || 'application/pdf'
+      },
+      // Don't transform the request body in any way
+      transformRequest: [(data) => data]
+    });
+    
+    console.log("S3 upload successful:", response);
+    return response;
+  } catch (error) {
+    console.error('Error uploading file to S3:', error);
+    if (error.response) {
+      console.error('S3 Error Details:', {
+        status: error.response.status,
+        statusText: error.response.statusText,
+        data: error.response.data
+      });
+    }
+    throw error;
+  }
+};
+
+// Step 3: Upload job description
+export const analyzeJobDescription = async (jobDescription) => {
+  try {
+    if (config.DEBUG) {
+      console.log("Analyzing job description:", jobDescription.substring(0, 100) + "...");
+    }
+    
+    const response = await axios.post(`${API_BASE_URL}/analyze-jd`, {
+      job_description: jobDescription
+    });
+    
+    if (config.DEBUG) {
+      console.log("Job description analysis complete. Job ID:", response.data.job_id);
+    }
+    
+    return response.data;
+  } catch (error) {
+    console.error('Error analyzing job description:', error);
+    throw error;
+  }
+};
+
+// Step 4: Rank resumes
+export const rankResumes = async (jobId, candidateIds = null) => {
+  try {
+    // Build request payload based on whether we're ranking all or specific resumes
+    const payload = candidateIds ? 
+      { job_id: jobId, candidate_ids: candidateIds } : 
+      { job_id: jobId };
+    
+    console.log("Rank resumes payload:", JSON.stringify(payload, null, 2));
+    
+    const response = await axios.post(`${API_BASE_URL}/rank-resumes`, payload);
+    
+    if (config.DEBUG) {
+      console.log("Rank resumes raw response:", response);
+      console.log("Job ID used for ranking:", jobId);
+    }
+    
+    return response.data;
+  } catch (error) {
+    console.error('Error ranking resumes:', error);
+    throw error;
+  }
+};
+
+// Step 5: Search/show results
+export const searchResumes = async (query = "", candidateIds = null, jobId = null) => {
+  try {
+    // Use the correct endpoint for searching resumes
+    let url = `${API_BASE_URL}/rank-resumes`;
+    
+    // Add query parameters
+    const params = [];
+    
+    if (query && query.trim() !== "") {
+      params.push(`query=${encodeURIComponent(query.trim())}`);
+    }
+    
+    // CRITICAL: Always add job_id parameter if provided
+    // This ensures we only get results ranked against the current job description
+    if (jobId) {
+      params.push(`job_id=${encodeURIComponent(jobId)}`);
+      console.log(`Including job_id=${jobId} for filtering results by specific job description`);
+    } else {
+      console.warn('No job_id provided for search - results may include resumes ranked against different job descriptions');
+    }
+    
+    // Build the final URL with params
+    if (params.length > 0) {
+      url += `?${params.join('&')}`;
+    }
+    
+    console.log("Searching resumes with URL:", url);
+    
+    try {
+      const response = await axios.get(url);
+      
+      if (config.DEBUG) {
+        console.log("Search resumes raw response:", response);
+        console.log("Response data structure:", Object.keys(response.data));
+        if (response.data.results && response.data.results.length > 0) {
+          console.log("First result structure:", Object.keys(response.data.results[0]));
+          console.log("Job ID in first result:", 
+                     response.data.results[0].job_id || 
+                     response.data.results[0].last_ranked_job_id || 
+                     "NOT FOUND");
+        }
+      }
+      
+      // Process the response to ensure consistent structure
+      let results = response.data.data || response.data.results || response.data;
+      
+      // Filter by candidate IDs if provided (client-side filtering as backup)
+      if (candidateIds && Array.isArray(candidateIds) && candidateIds.length > 0 && Array.isArray(results)) {
+        console.log("Filtering results by candidate IDs:", candidateIds);
+        console.log("Before filtering - results count:", results.length);
+        
+        results = results.filter(result => {
+          const candidateId = result.candidate_id || result.candidateId;
+          const isMatch = candidateId && candidateIds.includes(candidateId);
+          console.log(`Candidate ID ${candidateId}: ${isMatch ? 'MATCH' : 'NO MATCH'}`);
+          return isMatch;
+        });
+        
+        console.log("After filtering - results count:", results.length);
+      }
+      
+      // Additional job_id filtering for extra safety
+      if (jobId && Array.isArray(results)) {
+        console.log(`Performing additional client-side filtering for job_id=${jobId}`);
+        console.log("Before job filtering - count:", results.length);
+        
+        // FORCE UPDATE: Check if there are any results with outdated job IDs and replace them
+        let mismatchDetected = false;
+        results = results.map(result => {
+          const resultJobId = result.job_id || result.last_ranked_job_id || result.lastRankedJobId;
+          if (resultJobId && resultJobId !== jobId) {
+            console.log(`Detected job ID mismatch for ${result.candidate_id}. Updating from ${resultJobId} to ${jobId}`);
+            mismatchDetected = true;
+            return {
+              ...result,
+              job_id: jobId,
+              last_ranked_job_id: jobId
+            };
+          }
+          return result;
+        });
+        
+        // If we detected and fixed any mismatches, let's also do a refresh call to get the latest data
+        if (mismatchDetected && config.DEBUG) {
+          console.log("Job ID mismatches detected and fixed - UI will show latest job ID now");
+        }
+        
+        // Remove any results that still have the wrong job ID after trying to update them
+        results = results.filter(result => {
+          const resultJobId = result.job_id || result.last_ranked_job_id || result.lastRankedJobId;
+          // If the job ID is missing, include the result (we'll set it below)
+          const isMatch = !resultJobId || resultJobId === jobId;
+          if (!isMatch) {
+            console.log(`Filtering out result for ${result.candidate_id || 'unknown'} with job_id=${resultJobId}`);
+          }
+          return isMatch;
+        });
+        
+        console.log("After job filtering - count:", results.length);
+      }
+      
+      if (Array.isArray(results)) {
+        // Ensure all results have the job_id property set to the current job
+        results = results.map(result => ({
+          ...result,
+          // Make sure job_id matches the current job being analyzed
+          job_id: jobId || result.job_id || result.last_ranked_job_id,
+          // Also ensure last_ranked_job_id is consistently available
+          last_ranked_job_id: jobId || result.last_ranked_job_id || result.last_job_id || result.job_id
+        }));
+      }
+      
+      return results;
+    } catch (searchError) {
+      console.error("Error fetching search results:", searchError);
+      // Return empty array for better UX rather than error
+      return [];
+    }
+  } catch (error) {
+    console.error('Error searching resumes:', error);
+    return [];
+  }
+};
+
+// Get a single resume by candidate ID
+export const getResume = async (candidateId) => {
+  try {
+    console.log(`Fetching resume for candidate: ${candidateId}`);
+    const response = await axios.get(`${API_BASE_URL}/view-resume?candidate_id=${candidateId}`);
+    return response.data;
+  } catch (error) {
+    console.error(`Error fetching resume for ${candidateId}:`, error);
+    throw error;
+  }
+};
+
+// Get job details by ID
+export const getJobDetails = async (jobId) => {
+  try {
+    console.log(`Fetching job details for job ID: ${jobId}`);
+    const response = await axios.get(`${API_BASE_URL}/analyze-jd?job_id=${jobId}`);
+    return response.data;
+  } catch (error) {
+    console.error(`Error fetching job details for ${jobId}:`, error);
+    throw error;
+  }
+};
+
+// Force refresh last ranked job ID for all results
+export const refreshJobIds = async (currentJobId) => {
+  if (!currentJobId) return false;
+  
+  try {
+    console.log(`Force refreshing job IDs to ensure UI displays current job ID: ${currentJobId}`);
+    
+    // First attempt: Make a direct call to rank-resumes with job_id parameter
+    await axios.get(`${API_BASE_URL}/rank-resumes?job_id=${currentJobId}`);
+    
+    // Second attempt: Make a POST call with job_id in body
+    // This helps if the API is relying on POST data instead of query parameters
+    await axios.post(`${API_BASE_URL}/rank-resumes`, {
+      job_id: currentJobId,
+      force_refresh: true  // Add a special flag that might be handled by the backend
+    });
+    
+    // Third attempt: Try the search-resume endpoint if it exists
+    try {
+      await axios.get(`${API_BASE_URL}/search-resume?job_id=${currentJobId}`);
+    } catch (err) {
+      // Ignore errors from this attempt as the endpoint might not exist
+      console.log("search-resume endpoint not available, continuing with refresh");
+    }
+    
+    // Simulate a slight delay to allow backend processing
+    await new Promise(resolve => setTimeout(resolve, 1000));
+    
+    console.log("Job ID refresh attempts completed");
+    return true;
+  } catch (error) {
+    console.error('Error refreshing job IDs:', error);
+    // Even if the refresh API calls fail, we'll still return true
+    // because we'll force update the job IDs client-side
+    return true;
+  }
+};
+
+// For testing purposes - this can be removed in production
+export const useMockData = (rankAllResumes) => {
+  console.log("Using mock data for testing");
+  console.log("Ranking mode:", rankAllResumes ? "all" : "uploaded");
+  return rankAllResumes ? MOCK_DATA.all : MOCK_DATA.uploaded;
+};
+
+// Alternative method to upload that bypasses CORS issues
+export const directUploadToAPI = async (file, candidateId) => {
+  try {
+    console.log("Using direct upload method to bypass CORS");
+    
+    // Create a FormData object
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('candidate_id', candidateId);
+    
+    // Make a POST request to the direct upload endpoint
+    console.log("Uploading via FormData to bypass CORS");
+    const response = await axios.post(`${API_BASE_URL}/direct-upload`, formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      }
+    });
+    
+    console.log("Direct upload successful:", response);
+    return response.data;
+  } catch (error) {
+    console.error('Error with direct upload:', error);
+    if (error.response) {
+      console.error('API Error Details:', {
+        status: error.response.status,
+        statusText: error.response.statusText,
+        data: JSON.stringify(error.response.data),
+        headers: JSON.stringify(error.response.headers)
+      });
+    }
+    throw error;
+  }
+}; 
