@@ -1,139 +1,129 @@
-AWS-Based Intelligent Resume Ranking System
-This project presents a scalable, serverless, microservices-based solution for automating resume parsing, job description analysis, and intelligent resume-to-job ranking using cutting-edge AWS services and AI/ML technologies.
+# AWS Serverless Resume Ranking System
 
-Team
-NYU | Cloud Computing and Big Data Systems
-Team Members: Adarsh Rai, Aarya Shah
+_AWS Serverless Intelligent Resume Ranking System using Lambda, Textract, Comprehend, Bedrock LLM, DynamoDB, and OpenSearch._
 
-Table of Contents
-Overview
+---
 
-Architecture
+## 👥 Team
+**NYU | Cloud Computing and Big Data Systems**  
+**Team Members:** Adarsh Rai, Aarya Shah
 
-Key Technologies
+---
 
-Microservices / Lambdas
+## 📋 Table of Contents
+- [Overview](#overview)
+- [Problem Statement](#problem-statement)
+- [Architecture](#architecture)
+- [Key Technologies](#key-technologies)
+- [Microservices / Lambdas](#microservices--lambdas)
+- [API Endpoints](#api-endpoints)
+- [How it Works](#how-it-works)
+- [Results](#results)
+- [Future Work](#future-work)
+- [Demo Video](#demo-video)
 
-API Endpoints
+---
 
-How it Works
-
-Future Work
-
-Results
-
-Demo Video
-
-Overview
+## 📝 Overview
 The system automates resume parsing, job description analysis, and intelligent ranking of candidate resumes using a fully serverless, cloud-native architecture.
 
-Problem Statement
+---
+
+## 🎯 Problem Statement
 Manually screening and shortlisting resumes for job roles is time-consuming and inefficient.
 This system leverages cloud microservices and LLMs to automate the ranking process, reducing recruiter workload and improving candidate-job matching.
 
-Architecture
-User uploads resume via API Gateway
+---
 
-S3 triggers Lambda to parse resume (Textract)
+## 🏛️ Architecture
+1. User uploads resume via API Gateway.
+2. S3 triggers Lambda to parse resume (Textract).
+3. Job description is passed to API (analyzed via Comprehend).
+4. Parsed resumes + JD go to ranking Lambda (Bedrock Titan LLM).
+5. Results updated to DynamoDB + indexed to OpenSearch.
+6. User retrieves top candidates from OpenSearch.
 
-Job description is passed to API (analyzed via Comprehend)
+_**(Attach architecture diagram image here)**_
 
-Parsed resumes + JD go to ranking Lambda (Bedrock Titan LLM)
+---
 
-Results are updated to DynamoDB + indexed to OpenSearch
+## 🛠️ Key Technologies
+- AWS Lambda (Serverless compute)
+- Amazon S3 (Resume storage)
+- Amazon Textract (Resume parsing + text extraction)
+- Amazon Comprehend (JD key phrase & entity analysis)
+- AWS Bedrock Titan (LLM for resume-job match scoring)
+- Amazon DynamoDB (Persistent structured storage)
+- Amazon OpenSearch (Candidate search and retrieval)
+- Amazon API Gateway (REST API endpoints)
+- IAM + Roles (Fine-grained permissions)
 
-User retrieves top candidates from OpenSearch
+---
 
-See project flow diagram: (Attach your architecture diagram image here)
+## 🧩 Microservices / Lambdas
+| Lambda Name | Purpose |
+|-------------|---------|
+| `lambda_generate_presigned_url` | Generates pre-signed S3 upload URL |
+| `lambda_parse_resume` | Parses resume using Textract |
+| `lambda_analyze_jd` | Analyzes JD using Comprehend |
+| `lambda_rank_bedrock` | Scores resumes with Bedrock LLM, updates DynamoDB & OpenSearch |
+| `lambda_search_resumes` | Retrieves candidates from OpenSearch |
+| `lambda_view_resume` | Generates signed S3 URL for candidate resume |
 
-Key Technologies
-AWS Lambda (Serverless compute)
+---
 
-Amazon S3 (Resume storage)
+## 🌐 API Endpoints
+| Method | Path | Purpose |
+|--------|------|---------|
+| POST | `/upload-resume` | Generate signed S3 upload URL |
+| PUT | `{signed_url}` | Upload PDF resume file |
+| POST | `/analyze-jd` | Analyze JD and store results |
+| POST | `/rank-resumes` | Rank candidate resumes |
+| GET | `/rank-resumes` | Fetch ranked resumes |
+| GET | `/view-resume` | View candidate PDF by ID |
 
-Amazon Textract (Resume parsing + text extraction)
+---
 
-Amazon Comprehend (JD key phrase & entity analysis)
-
-AWS Bedrock Titan (LLM for resume-job match scoring)
-
-Amazon DynamoDB (Persistent structured storage)
-
-Amazon OpenSearch (Search and retrieval of ranked candidates)
-
-Amazon API Gateway (REST API endpoints)
-
-IAM + Roles (Fine-grained permissions)
-
-Microservices / Lambdas
-Lambda Name	Purpose
-lambda_generate_presigned_url	Generates pre-signed S3 upload URL
-lambda_parse_resume	Triggered by S3 upload; parses resume via Textract
-lambda_analyze_jd	Analyzes job description using Comprehend
-lambda_rank_resumes	Matches resumes to JD using Bedrock LLM and updates DynamoDB + OpenSearch
-lambda_search_resumes	GET or POST to fetch candidates from OpenSearch
-lambda_get_resume	Generates signed URL to view individual candidate resume
-
-API Endpoints
-Method	Path	Purpose
-POST	/upload-resume	Generate signed S3 upload URL
-PUT	{signed_url}	Upload PDF resume file
-POST	/analyze-jd	Analyze JD and store results
-POST	/rank-resumes	Rank all / selected candidate resumes
-GET	/rank-resumes	Fetch ranked resumes
-GET	/view-resume	View live candidate PDF resume by candidate ID
-
-How it Works
-Upload Resume:
-
+## 🔎 How it Works
+**1️⃣ Upload Resume:**  
 Frontend requests signed URL → Uploads PDF to S3.
 
-Resume Parsing:
+**2️⃣ Resume Parsing:**  
+S3 triggers Lambda → AWS Textract parses & stores data.
 
-S3 triggers Lambda → AWS Textract parses & stores in DynamoDB.
+**3️⃣ Job Description Analysis:**  
+User submits JD → Comprehend extracts key data → stores in DynamoDB.
 
-Job Description Analysis:
+**4️⃣ Resume Ranking:**  
+Bedrock LLM calculates match scores between JD and resumes → Updates scores to DynamoDB + OpenSearch.
 
-User submits JD → Comprehend analyzes key phrases + entities → stores in DynamoDB.
+**5️⃣ Candidate Search:**  
+User retrieves top candidates from OpenSearch with query filtering.
 
-Resume Ranking:
+**6️⃣ View Resume:**  
+User views resume via signed S3 URL.
 
-Bedrock LLM calculates similarity score between JD & resumes.
+---
 
-Updates scores into DynamoDB + indexes into OpenSearch.
+## 📝 Results
+- Successfully supports ~150+ resumes per session.
+- Bedrock LLM delivers ~85-95% accuracy in matching.
+- Fully tested end-to-end with clean microservices separation.
 
-Candidate Search:
+---
 
-User retrieves top candidates via OpenSearch.
+## 🚀 Future Work
+- Resume pre-cleaning for low-quality datasets.
+- LLM-based parsing for unstructured formats.
+- Parallel Lambda execution for 1000+ resume scalability.
+- Batch APIs for enterprise usage.
+- Fine-tune OpenSearch settings for high-volume retrieval.
+- Enhanced IAM & security controls.
+- Enable frontend download of ranked result CSVs.
 
-Supports query filtering + optional tag-style multi-keyword filters.
+---
 
-View Resume:
+## 🎥 Demo Video
+Watch the full demo [here](#) _(Link coming soon)_
 
-User can view candidate’s resume directly (via signed S3 URL).
-
-Results
-Supports ~150+ resumes per session with full pipeline execution.
-
-Accurate scoring: Bedrock LLM delivers 85-95% accuracy for relevant matches.
-
-End-to-end tested: Project fully functional with AWS cloud services and clean microservice separation.
-
-Future Work
-Resume pre-cleaning for poor quality datasets.
-
-LLM-based parsing for messy formats (Kaggle-style resumes).
-
-Parallel Lambda execution for 1000+ resume scalability.
-
-Batch APIs for enterprise clients.
-
-Fine-tuned OpenSearch settings for high volume retrieval.
-
-Enhanced IAM & security controls.
-
-Direct frontend download of ranked result CSVs (future feature).
-
-Demo Video
-Watch our full 3-min demo:
-[YouTube Link - Coming Soon]
+---
