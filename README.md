@@ -6,7 +6,7 @@ _AWS Serverless Intelligent Resume Ranking System using Lambda, Textract, Compre
 
 ## 👥 Team
 **NYU | Cloud Computing and Big Data Systems**  
-**Team Members:** Adarsh Rai, Aarya Shah
+**Team Members:** Adarsh Rai, Aarya Shah, Dean Sheng, Angjelo Gioni, Kartik Deori
 
 ---
 
